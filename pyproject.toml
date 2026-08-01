@@ -37,7 +37,7 @@ Changelog = "https://github.com/simplesconsultoria/zodb-backup/blob/main/CHANGES
 zodb-backup = "zodb_backup.cli:main"
 
 [build-system]
-requires = ["hatchling>=1.27"]
+requires = ["hatchling>=1.31.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
