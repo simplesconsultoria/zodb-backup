@@ -1,0 +1,1 @@
+A backup location that cannot be created or written to now reports a configuration error naming the directory and the user id, and exits with status 2, instead of failing with a traceback. This is what a non-root container hits against a freshly created Docker volume. @ericof

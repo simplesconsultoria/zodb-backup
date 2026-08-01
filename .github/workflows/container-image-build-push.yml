@@ -1,0 +1,115 @@
+name: Container Image Generation
+description: Build the container image, and publish it when asked to
+
+on:
+  workflow_call:
+    inputs:
+      base-tag:
+        required: true
+        type: string
+      image-name:
+        required: true
+        type: string
+      working-directory:
+        required: false
+        type: string
+        default: "."
+      dockerfile:
+        required: false
+        type: string
+        default: Dockerfile
+      platforms:
+        required: false
+        type: string
+        default: "linux/amd64"
+      registry:
+        required: false
+        type: string
+        default: "ghcr.io"
+      build-args:
+        required: false
+        type: string
+        default: ""
+      push:
+        required: true
+        type: boolean
+    secrets:
+        username:
+            required: true
+        password:
+            required: true
+
+jobs:
+
+  build:
+    name: "Image ${{ inputs.image-name }}:${{ inputs.base-tag }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Only authenticate when there is something to push; building alone needs
+      # no registry credentials.
+      - name: Login to Container Registry
+        if: ${{ inputs.push }}
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.username }}
+          password: ${{ secrets.password }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ inputs.image-name }}
+          flavor:
+            latest=false
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=${{ inputs.base-tag }}
+            type=pep440,pattern={{version}}
+            type=pep440,pattern={{major}}.{{minor}}
+            type=pep440,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build Image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.working-directory }}
+          file: ${{ inputs.working-directory }}/${{ inputs.dockerfile }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: ${{ inputs.platforms }}
+          push: ${{ inputs.push }}
+          build-args: ${{ inputs.build-args }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Report
+        if: ${{ always() }}
+        run: |
+          echo '# Container Image' >> $GITHUB_STEP_SUMMARY
+          echo '| Variable | Value |' >> $GITHUB_STEP_SUMMARY
+          echo '| --- | --- |' >> $GITHUB_STEP_SUMMARY
+          echo "| image | ${{ inputs.image-name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| platforms | ${{ inputs.platforms }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| pushed | ${{ inputs.push }} |" >> $GITHUB_STEP_SUMMARY
+          echo '| tags | <ul>' >> $GITHUB_STEP_SUMMARY
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            echo "<li>${tag}</li>" >> $GITHUB_STEP_SUMMARY
+          done
+          echo '</ul> |' >> $GITHUB_STEP_SUMMARY

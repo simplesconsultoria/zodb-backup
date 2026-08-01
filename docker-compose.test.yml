@@ -1,0 +1,91 @@
+# Stack for the opt-in integration tests: a live ZEO server, a writer that keeps
+# committing objects and blobs, and the backup container sharing its volumes.
+#
+# The data volumes are mounted read-only into the backup container, which is both
+# how it should be deployed and a standing check of invariant I7.
+#
+# Every service here runs as uid 500 without being told to: that is the default
+# user of both plone/plone-zeo and the zodb-backup image. Sharing one uid is what
+# lets the backup container read a blobstorage the ZEO server wrote. The only
+# exception is `init`, which needs root to fix volume ownership. If you point
+# this stack at an image that defaults to some other user, add `user: "500:500"`
+# back to that service.
+#
+# Driven by tests/integration/test_container.py; `make test-integration` runs it.
+
+name: zodb-backup-test
+
+services:
+  zeo:
+    image: plone/plone-zeo:latest
+    volumes:
+      - data:/data
+    healthcheck:
+      # Not zeo-nagios: it exits non-zero on an empty storage, and the storage is
+      # empty until the writer has run, which waits on this healthcheck.
+      test:
+        - CMD
+        - /app/bin/python
+        - -c
+        - "import ZEO; ZEO.connection(('localhost', 8100)).close()"
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 3s
+
+  writer:
+    image: plone/plone-zeo:latest
+    depends_on:
+      zeo:
+        condition: service_healthy
+    volumes:
+      # Shares the blobstorage with the ZEO server, as a Plone backend does.
+      - data:/data
+      - ./tests/integration:/scripts:ro
+    entrypoint: ["/app/bin/python", "/scripts/writer.py"]
+    command: ["zeo:8100", "10", "run1"]
+
+  # Docker creates named volumes owned by root, so a non-root backup container
+  # cannot write to a fresh one. Real deployments hit this too; the README
+  # documents it. Here a one-shot root container fixes the ownership up front.
+  init:
+    image: busybox:latest
+    user: "0:0"
+    volumes:
+      - backups:/backups
+      - restored:/restored
+    command: ["sh", "-c", "chown -R 500:500 /backups /restored"]
+
+  backup:
+    image: ghcr.io/simplesconsultoria/zodb-backup:dev
+    build: .
+    volumes:
+      - data:/data:ro
+      - backups:/backups
+    environment:
+      KEEP: "2"
+
+  # Restores into a separate, initially empty volume, so a botched restore can
+  # never damage the data the rest of the stack is using.
+  restore:
+    image: ghcr.io/simplesconsultoria/zodb-backup:dev
+    build: .
+    volumes:
+      - restored:/data
+      - backups:/backups:ro
+    environment:
+      ASSUME_YES: "true"
+    command: ["restore"]
+
+  verifier:
+    image: plone/plone-zeo:latest
+    volumes:
+      - restored:/data:ro
+      - ./tests/integration:/scripts:ro
+    entrypoint: ["/app/bin/python", "/scripts/verifier.py"]
+    command: ["/data", "run1"]
+
+volumes:
+  data:
+  backups:
+  restored:

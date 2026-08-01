@@ -1,0 +1,106 @@
+name: "Compute Config variables"
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        required: false
+        type: string
+        default: "3.14"
+      image-name:
+        required: false
+        type: string
+        default: "ghcr.io/simplesconsultoria/zodb-backup"
+      base-branch:
+        required: false
+        type: string
+        default: "main"
+    outputs:
+      python-version:
+        description: "Python version to be used"
+        value: ${{ inputs.python-version }}
+      image-name:
+        description: "Name of the container image published by this repository"
+        value: ${{ inputs.image-name }}
+      base-branch:
+        description: "Branch pull requests are compared against"
+        value: ${{ inputs.base-branch }}
+      event-name:
+        description: "Event name triggering the workflow"
+        value: ${{ github.event_name }}
+      base-tag:
+        description: "Base tag to be used when creating container images"
+        value: ${{ jobs.config.outputs.base-tag }}
+      version:
+        description: "Version of the package, read from the source"
+        value: ${{ jobs.config.outputs.version }}
+      build-date:
+        description: "RFC 3339 timestamp for container image metadata"
+        value: ${{ jobs.config.outputs.build-date }}
+      code:
+        description: "Flag reporting if we should run the code jobs"
+        value: ${{ jobs.config.outputs.code }}
+      docs:
+        description: "Flag reporting if we should run the docs jobs"
+        value: ${{ jobs.config.outputs.docs }}
+
+jobs:
+  config:
+    runs-on: ubuntu-latest
+    outputs:
+      base-tag: ${{ steps.vars.outputs.base-tag }}
+      version: ${{ steps.vars.outputs.version }}
+      build-date: ${{ steps.vars.outputs.build-date }}
+      # The filter only runs on pull requests, where there is a meaningful base
+      # to compare against. Everywhere else these fall back to true, so a push
+      # or a tag never silently skips a job.
+      code: ${{ steps.filter.outputs.code || 'true' }}
+      docs: ${{ steps.filter.outputs.docs || 'true' }}
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Compute several vars needed for the CI
+        id: vars
+        shell: bash
+        run: |
+          echo "version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/zodb_backup/__init__.py)" >> "$GITHUB_OUTPUT"
+          echo "base-tag=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build-date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Filter paths
+        uses: dorny/paths-filter@v4
+        id: filter
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'tests/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'Dockerfile'
+              - 'docker-compose.test.yml'
+              - 'Makefile'
+              - '.github/workflows/**'
+            docs:
+              - 'docs/**'
+              - 'README.md'
+              - 'news/**'
+
+      - name: Report
+        run: |
+          echo '# Config Settings' >> $GITHUB_STEP_SUMMARY
+          echo '| Variable | Value |' >> $GITHUB_STEP_SUMMARY
+          echo '| --- | --- |' >> $GITHUB_STEP_SUMMARY
+          echo "| python-version | ${{ inputs.python-version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| image-name | ${{ inputs.image-name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| base-branch | ${{ inputs.base-branch }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| version | ${{ steps.vars.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| base-tag | ${{ steps.vars.outputs.base-tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| build-date | ${{ steps.vars.outputs.build-date }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| event-name | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| code | ${{ steps.filter.outputs.code || 'true' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| docs | ${{ steps.filter.outputs.docs || 'true' }} |" >> $GITHUB_STEP_SUMMARY

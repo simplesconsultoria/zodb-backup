@@ -1,0 +1,53 @@
+name: Tag and publish
+
+on:
+  push:
+    tags:
+      - '*.*'
+  workflow_dispatch:
+
+jobs:
+
+  config:
+    uses: ./.github/workflows/config.yml
+
+  release-image:
+    name: "Build and publish Container Image"
+    uses: ./.github/workflows/container-image-build-push.yml
+    needs:
+      - config
+    permissions:
+      contents: read
+      packages: write
+    with:
+      base-tag: ${{ github.ref_name }}
+      image-name: ${{ needs.config.outputs.image-name }}
+      working-directory: .
+      # Released images are multi-arch; day-to-day builds on main are not, so a
+      # push to main does not pay for emulation it does not need.
+      platforms: linux/amd64,linux/arm64
+      build-args: |
+        PYTHON_VERSION=${{ needs.config.outputs.python-version }}
+        VERSION=${{ needs.config.outputs.version }}
+        VCS_REF=${{ github.sha }}
+        BUILD_DATE=${{ needs.config.outputs.build-date }}
+      push: true
+    secrets:
+      username: ${{ github.actor }}
+      password: ${{ secrets.GITHUB_TOKEN }}
+
+  report:
+    name: "Final report"
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    needs:
+      - config
+      - release-image
+    steps:
+        - name: Write report
+          run: |
+            echo '# Workflow Report' >> $GITHUB_STEP_SUMMARY
+            echo '| Job ID | Conclusion |' >> $GITHUB_STEP_SUMMARY
+            echo '| --- | --- |' >> $GITHUB_STEP_SUMMARY
+            echo '| config | ${{ needs.config.result }} |' >> $GITHUB_STEP_SUMMARY
+            echo '| release-image | ${{ needs.release-image.result }} |' >> $GITHUB_STEP_SUMMARY

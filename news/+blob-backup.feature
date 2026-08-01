@@ -1,0 +1,1 @@
+Added blob backup and restore in four modes: an rsync tree that hard-links unchanged blobs against the previous backup, a plain directory copy for systems without rsync, and tar or tar.gz archives. Blob backups are named after the filestorage backup made in the same run, and a `latest` symlink is updated atomically. @ericof

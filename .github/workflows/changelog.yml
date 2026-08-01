@@ -1,0 +1,57 @@
+name: "Changelog"
+
+on:
+  pull_request:
+    types: [assigned, opened, synchronize, reopened, labeled, unlabeled]
+    branches:
+      - main
+
+jobs:
+
+  config:
+    uses: ./.github/workflows/config.yml
+
+  changelog:
+    name: Check for a news fragment
+    runs-on: ubuntu-latest
+    needs:
+      - config
+    steps:
+        - name: Checkout
+          uses: actions/checkout@v7
+          with:
+            # Fetch all history, so towncrier can compare against the base branch.
+            fetch-depth: '0'
+
+        - name: Install the latest version of uv
+          uses: astral-sh/setup-uv@v9.0.0
+          with:
+            python-version: ${{ needs.config.outputs.python-version }}
+            cache-python: true
+            enable-cache: true
+            cache-dependency-glob: |
+              **/uv.lock
+
+        - name: Check for presence of a Change Log fragment
+          run: |
+            # Fetch the pull request's base branch so towncrier can compare the
+            # current branch against it.
+            # Source: https://github.com/actions/checkout/#fetch-all-branches.
+            git fetch --no-tags origin ${{ needs.config.outputs.base-branch }}
+            uvx towncrier check --compare-with origin/${{ needs.config.outputs.base-branch }} --config pyproject.toml --dir .
+
+  report:
+    name: "Final report"
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    needs:
+      - config
+      - changelog
+    steps:
+        - name: Write report
+          run: |
+            echo '# Workflow Report' >> $GITHUB_STEP_SUMMARY
+            echo '| Job ID | Conclusion |' >> $GITHUB_STEP_SUMMARY
+            echo '| --- | --- |' >> $GITHUB_STEP_SUMMARY
+            echo '| config | ${{ needs.config.result }} |' >> $GITHUB_STEP_SUMMARY
+            echo '| changelog | ${{ needs.changelog.result }} |' >> $GITHUB_STEP_SUMMARY

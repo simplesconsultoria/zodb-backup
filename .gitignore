@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+.*_cache/
+.coverage
+htmlcov/
+
+# Read-only study clone of collective.recipe.backup
+vendor-reference/
+
+# Local-only agent files, including symlinks outside the repository
+.claude/*.local.md
+
+# Virtual environments
+.venv

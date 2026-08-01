@@ -1,0 +1,1 @@
+Added filestorage backup, restore and verify, driving ZODB's `repozo` in process. Backup timestamps are allocated to be strictly monotonic, which avoids an upstream `repozo` defect where an incremental sharing a clock second with its full backup is silently dropped from later restores. @ericof

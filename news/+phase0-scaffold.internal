@@ -1,0 +1,1 @@
+Added the project scaffold: GPL-2.0 licensing, hatchling packaging, ruff and strict mypy, pytest, towncrier, a GitHub Actions workflow, and the `zodb-backup` command surface with environment-variable configuration. @ericof
