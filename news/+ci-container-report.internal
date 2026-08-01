@@ -1,1 +1,0 @@
-Fixed the container image workflow's job summary step, which aborted with a shell syntax error because the newline-separated tag list was spliced directly into the script text. The image itself built and pushed correctly, but the failed step turned the whole run red. Values now reach the script through the environment. @ericof
