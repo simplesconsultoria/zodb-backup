@@ -1,0 +1,14 @@
+# Every change gets a review from a maintainer.
+*                       @ericof
+
+# The exit-code contract, the restore path and retention are the places where a
+# mistake silently costs someone their data. They are called out here so a
+# review of them is never incidental.
+/src/zodb_backup/repozo.py      @ericof
+/src/zodb_backup/retention.py   @ericof
+/src/zodb_backup/operations.py  @ericof
+
+# Release and publishing plumbing.
+/.github/workflows/     @ericof
+/Dockerfile             @ericof
+/pyproject.toml         @ericof

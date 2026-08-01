@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability or data-loss report
+    url: https://github.com/simplesconsultoria/zodb-backup/security/advisories/new
+    about: >-
+      Do not open a public issue. Report privately, including any case where a
+      backup could not be restored or restored data differed from the original.
+  - name: Read the documentation first
+    url: https://github.com/simplesconsultoria/zodb-backup#readme
+    about: >-
+      Configuration, the restore runbook, retention, and the documented
+      limitations — several reported "bugs" are covered there.

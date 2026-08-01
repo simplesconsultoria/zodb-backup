@@ -1,0 +1,53 @@
+name: Feature request
+description: Suggest a capability or a change in behaviour.
+labels: ["enhancement"]
+body:
+
+  - type: markdown
+    attributes:
+      value: >-
+        Some things are deliberately out of scope: RelStorage and other SQL
+        backends, off-site replication (use `POST_COMMAND`), encryption, and
+        scheduling (that belongs to your orchestrator). See the "What is NOT
+        backed up" section of the README before filing.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The operational problem
+      description: >-
+        What are you trying to do, and what makes it awkward or impossible now?
+        Describe the situation rather than the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: >-
+        Existing configuration, a hook, or a wrapper script — and why it did not
+        work out.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: upstream
+    attributes:
+      label: Does collective.recipe.backup already do this?
+      description: >-
+        This project is modelled on that recipe, so prior art there is a strong
+        argument. Not knowing is a perfectly fine answer.
+      options:
+        - "Yes, and it works the way I am describing"
+        - "No"
+        - "I do not know"
+    validations:
+      required: true

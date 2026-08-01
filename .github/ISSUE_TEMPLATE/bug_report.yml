@@ -1,0 +1,100 @@
+name: Bug report
+description: Something behaved differently from what is documented.
+labels: ["bug"]
+body:
+
+  - type: markdown
+    attributes:
+      value: >-
+        If a backup could not be restored, or restored data came back different
+        from the original, please **do not** file it here — report it privately
+        via
+        [security advisories](https://github.com/simplesconsultoria/zodb-backup/security/advisories/new).
+        Silent data loss is handled as a security issue in this project.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you observed, not what you think caused it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands, in order.
+      placeholder: |
+        1. docker run --rm -v ... ghcr.io/simplesconsultoria/zodb-backup:1.0.0a1 backup
+        2. ...
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Full output
+      description: >-
+        The complete output, including the exit code. Re-run with `DEBUG=true`
+        if you can. Please redact anything sensitive rather than trimming it.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: >-
+        The environment variables in play, and the flags you passed. Include
+        `PRE_COMMAND` / `POST_COMMAND` and `RSYNC_OPTIONS` if you set them.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or image tag
+      placeholder: "1.0.0a1, or sha-ef495bc"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: how-run
+    attributes:
+      label: How are you running it?
+      options:
+        - Container image
+        - Installed CLI (uv / pip)
+        - From a checkout
+    validations:
+      required: true
+
+  - type: input
+    id: filesystem
+    attributes:
+      label: Filesystem holding the backups
+      description: >-
+        Relevant because hard-linked blob backups depend on it. NFS and Gluster
+        are known-untested.
+      placeholder: "ext4 local volume / NFS / Gluster / overlay"
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: "Docker Swarm on Ubuntu 24.04, linux/amd64"
+    validations:
+      required: false

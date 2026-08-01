@@ -28,8 +28,10 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/simplesconsultoria/zodb-backup"
+Documentation = "https://github.com/simplesconsultoria/zodb-backup#readme"
 Source = "https://github.com/simplesconsultoria/zodb-backup"
 Issues = "https://github.com/simplesconsultoria/zodb-backup/issues"
+Changelog = "https://github.com/simplesconsultoria/zodb-backup/blob/main/CHANGES.md"
 
 [project.scripts]
 zodb-backup = "zodb_backup.cli:main"
@@ -52,7 +54,9 @@ include = [
     "news",
     "AGENTS.md",
     "CHANGES.md",
+    "CONTRIBUTING.md",
     "README.md",
+    "SECURITY.md",
     "LICENSE",
     "Makefile",
 ]

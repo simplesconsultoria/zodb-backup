@@ -1,0 +1,41 @@
+version: 2
+
+updates:
+
+  # The workflows pin actions to exact versions on purpose (there is no moving
+  # `v9` tag for astral-sh/setup-uv, for one), so they only move when Dependabot
+  # proposes it and CI proves it.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps"
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+
+  # The runtime base image. A backup tool that cannot start is a backup that did
+  # not happen, so base image updates are worth seeing promptly.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "docker"
