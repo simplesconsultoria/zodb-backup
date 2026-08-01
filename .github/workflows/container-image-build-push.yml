@@ -99,17 +99,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Values reach the script through the environment, never through direct
+      # ``${{ }}`` interpolation: ``meta.outputs.tags`` is a newline-separated
+      # list, and splicing it into the script text breaks the shell parse.
       - name: Report
         if: ${{ always() }}
+        env:
+          IMAGE_NAME: ${{ inputs.image-name }}
+          PLATFORMS: ${{ inputs.platforms }}
+          PUSHED: ${{ inputs.push }}
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          echo '# Container Image' >> $GITHUB_STEP_SUMMARY
-          echo '| Variable | Value |' >> $GITHUB_STEP_SUMMARY
-          echo '| --- | --- |' >> $GITHUB_STEP_SUMMARY
-          echo "| image | ${{ inputs.image-name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| platforms | ${{ inputs.platforms }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| pushed | ${{ inputs.push }} |" >> $GITHUB_STEP_SUMMARY
-          echo '| tags | <ul>' >> $GITHUB_STEP_SUMMARY
-          for tag in ${{ steps.meta.outputs.tags }}; do
-            echo "<li>${tag}</li>" >> $GITHUB_STEP_SUMMARY
-          done
-          echo '</ul> |' >> $GITHUB_STEP_SUMMARY
+          {
+            echo '# Container Image'
+            echo '| Variable | Value |'
+            echo '| --- | --- |'
+            echo "| image | ${IMAGE_NAME} |"
+            echo "| platforms | ${PLATFORMS} |"
+            echo "| pushed | ${PUSHED} |"
+            printf '| tags | <ul>'
+            while IFS= read -r tag; do
+              if [ -n "${tag}" ]; then
+                printf '<li>%s</li>' "${tag}"
+              fi
+            done <<< "${TAGS}"
+            echo '</ul> |'
+          } >> "${GITHUB_STEP_SUMMARY}"
