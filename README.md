@@ -90,6 +90,29 @@ Anything else is a configuration error — a typo will never be read as "false".
 
 Exit codes: `0` success, `1` operational failure, `2` configuration error.
 
+## Run duration
+
+Every `backup`, `snapshot`, `restore` and `snapshot-restore` ends with one log
+line saying how long it took, in total and per phase:
+
+```
+INFO zodb_backup.operations: backup finished in 21m14s (filestorage 1m02s, blobs 20m09s, retention 0.3s)
+ERROR zodb_backup.operations: backup failed after 4m31s in blobs (filestorage 1m02s, blobs 3m29s)
+```
+
+Only the phases that ran are listed: `pre-command` and `post-command` appear
+when a hook is configured, `filestorage` is absent with `ONLY_BLOBS=true`, and
+`blobs` is absent without a blobstorage. A failed run names the phase it failed
+in. A restore is timed from the moment it is confirmed, so time spent at the
+prompt is not counted.
+
+Use it to size the window between backups and `zeopack`, and to spot a backup
+that has quietly grown from minutes to hours while still exiting `0`. The
+container orchestrator keeps no reliable record of this: a stopped container is
+often pruned within the hour, and Swarm task history is bounded and includes
+image pulls and scheduling. The success line is logged at `INFO`, so
+`QUIET=true` suppresses it; the failure line is an `ERROR` and is always shown.
+
 ## Running the container
 
 The image expects the ZODB data at `/data` and writes backups to `/backups`,

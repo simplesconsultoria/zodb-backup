@@ -19,11 +19,19 @@ The order inside a backup is not arbitrary and must not be rearranged:
 
 A failure in the filestorage step abandons the run before blobs are touched: a
 blob backup with no filestorage backup beside it is useless.
+
+Every backup, snapshot and restore logs how long it took, in total and per
+phase, on success and on failure alike. The orchestrator's record of a run is
+short-lived and imprecise; the log is the one artefact the operator controls.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from types import TracebackType
+from typing import Self
 from zodb_backup import blobs as blob_module
 from zodb_backup import repozo
 from zodb_backup import retention
@@ -42,9 +50,111 @@ from zodb_backup.timestamps import parse_stamp
 
 import logging
 import sys
+import time
 
 
 logger = logging.getLogger("zodb_backup.operations")
+
+#: The clock runs are timed with. Monotonic, so a wall-clock adjustment (NTP,
+#: a daylight-saving change) cannot make a duration negative or inflate it. A
+#: module attribute so tests can substitute a clock they control.
+_clock = time.monotonic
+
+
+def format_duration(seconds: float) -> str:
+    """Render a duration compactly.
+
+    :param seconds: elapsed time in seconds.
+    :returns: ``12.3s`` under a minute, ``4m05s`` under an hour, ``1h02m03s``
+        beyond that.
+    """
+    if round(seconds, 1) < 60:
+        return f"{seconds:.1f}s"
+    hours, rest = divmod(round(seconds), 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    return f"{minutes}m{secs:02d}s"
+
+
+class RunTimer:
+    """Time one run and each of its phases, and log the result.
+
+    Used as a context manager around a whole run. A clean exit logs one
+    ``INFO`` line with the total and every phase that ran. A run that raises
+    logs one ``ERROR`` line saying how long it took to give up and in which
+    phase, then lets the exception propagate unchanged.
+    """
+
+    def __init__(self, operation: str) -> None:
+        """Prepare a timer; the clock starts on ``__enter__``.
+
+        :param operation: what is being timed, e.g. ``backup`` or ``restore``.
+        """
+        self.operation = operation
+        self.phases: dict[str, float] = {}
+        self.failed_phase: str | None = None
+        self.total: float | None = None
+        self._started = 0.0
+
+    def __enter__(self) -> Self:
+        self._started = _clock()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.total = _clock() - self._started
+        if exc_type is None:
+            logger.info(
+                "%s finished in %s%s",
+                self.operation,
+                format_duration(self.total),
+                self._breakdown(),
+            )
+            return
+        where = f" in {self.failed_phase}" if self.failed_phase else ""
+        logger.error(
+            "%s failed after %s%s%s",
+            self.operation,
+            format_duration(self.total),
+            where,
+            self._breakdown(),
+        )
+
+    @contextmanager
+    def phase(self, name: str) -> Iterator[None]:
+        """Time one phase of the run.
+
+        The phase is recorded even when it raises, so a failure report shows
+        how long the failing phase ran before giving up.
+
+        :param name: the phase's name in the log line.
+        """
+        started = _clock()
+        try:
+            yield
+        except BaseException:
+            self.failed_phase = name
+            raise
+        finally:
+            self.phases[name] = _clock() - started
+
+    def _breakdown(self) -> str:
+        """Render the phases that ran, in the order they ran.
+
+        :returns: ``" (filestorage 1m02s, blobs 10m55s)"``, or an empty string
+            when no phase started.
+        """
+        if not self.phases:
+            return ""
+        parts = (
+            f"{name} {format_duration(spent)}" for name, spent in self.phases.items()
+        )
+        return f" ({', '.join(parts)})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,36 +250,44 @@ def backup(settings: Settings, *, snapshot: bool = False) -> RunResult:
     :raises CommandError: if a hook fails.
     """
     repository, blob_location = _locations(settings, snapshot=snapshot)
-    run_pre_command(settings)
+    with RunTimer("snapshot" if snapshot else "backup") as timer:
+        if settings.pre_command:
+            with timer.phase("pre-command"):
+                run_pre_command(settings)
 
-    stamp = next_stamp(repository)
-    filestorage_result = BackupResult(stamp=stamp, path=None, full=False)
+        stamp = next_stamp(repository)
+        filestorage_result = BackupResult(stamp=stamp, path=None, full=False)
 
-    if not settings.only_blobs:
-        filestorage_result = repozo.backup(
-            datafs=settings.datafs,
-            repository=repository,
-            stamp=stamp,
-            full=settings.full or snapshot,
-            quick=settings.quick,
-            gzip=settings.gzip,
-            verbose=settings.debug,
-        )
+        if not settings.only_blobs:
+            with timer.phase("filestorage"):
+                filestorage_result = repozo.backup(
+                    datafs=settings.datafs,
+                    repository=repository,
+                    stamp=stamp,
+                    full=settings.full or snapshot,
+                    quick=settings.quick,
+                    gzip=settings.gzip,
+                    verbose=settings.debug,
+                )
 
-    blob_result = None
-    if settings.blobs_enabled:
-        assert settings.blobstorage is not None  # guaranteed by blobs_enabled
-        blob_result = _backup_blobs(
-            settings, blob_location, repository, stamp, filestorage_result
-        )
+        blob_result = None
+        if settings.blobs_enabled:
+            assert settings.blobstorage is not None  # guaranteed by blobs_enabled
+            with timer.phase("blobs"):
+                blob_result = _backup_blobs(
+                    settings, blob_location, repository, stamp, filestorage_result
+                )
 
-    removed = retention.apply(
-        repository=repository,
-        keep=settings.keep,
-        blob_location=blob_location if settings.blobs_enabled else None,
-    )
+        with timer.phase("retention"):
+            removed = retention.apply(
+                repository=repository,
+                keep=settings.keep,
+                blob_location=blob_location if settings.blobs_enabled else None,
+            )
 
-    run_post_command(settings)
+        if settings.post_command:
+            with timer.phase("post-command"):
+                run_post_command(settings)
     return RunResult(filestorage=filestorage_result, blobs=blob_result, removed=removed)
 
 
@@ -232,18 +350,35 @@ def restore(
         targets.append(settings.blobstorage)
     _confirm(settings, targets)
 
-    if not settings.only_blobs:
-        repozo.recover(
-            repository=repository,
-            output=settings.datafs,
-            date=date,
-            verbose=settings.debug,
-        )
+    # Timed only once confirmed, so time spent at the prompt is not counted.
+    with RunTimer("snapshot-restore" if snapshot else "restore") as timer:
+        if not settings.only_blobs:
+            with timer.phase("filestorage"):
+                repozo.recover(
+                    repository=repository,
+                    output=settings.datafs,
+                    date=date,
+                    verbose=settings.debug,
+                )
 
-    if not settings.blobs_enabled:
-        return
+        if settings.blobs_enabled:
+            with timer.phase("blobs"):
+                _restore_blobs(settings, repository, blob_location, date)
+
+
+def _restore_blobs(
+    settings: Settings, repository: Path, blob_location: Path, date: str | None
+) -> None:
+    """Restore the blob backup that matches the restored filestorage state.
+
+    :param settings: resolved settings for this run.
+    :param repository: directory holding the filestorage backups.
+    :param blob_location: directory holding the blob backups.
+    :param date: the requested date, or ``None`` for the latest state.
+    :raises ConfigurationError: if ``date`` is not a valid timestamp.
+    :raises RestoreError: if no blob backup matches.
+    """
     assert settings.blobstorage is not None
-
     moment = _restored_moment(repository, date)
     chosen = blob_module.find_backup_at_or_before(blob_location, moment)
     if chosen is None:

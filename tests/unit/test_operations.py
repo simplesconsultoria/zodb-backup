@@ -12,11 +12,13 @@ from zodb_backup import operations
 from zodb_backup import retention
 from zodb_backup.blobs import LATEST_LINK
 from zodb_backup.config import Settings
+from zodb_backup.errors import BackupError
 from zodb_backup.errors import CommandError
 from zodb_backup.errors import RestoreError
 from zodb_backup.timestamps import find_backup_files
 from zodb_backup.timestamps import format_stamp
 
+import logging
 import pytest
 
 
@@ -503,3 +505,272 @@ class TestVerify:
         operations.backup(settings)
 
         operations.verify(settings)
+
+
+class FakeClock:
+    """A monotonic clock that only moves when a test says so."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> FakeClock:
+    """Replace the clock runs are timed with by a :class:`FakeClock`."""
+    fake = FakeClock()
+    monkeypatch.setattr(operations, "_clock", fake)
+    return fake
+
+
+@pytest.fixture
+def durations(caplog: pytest.LogCaptureFixture) -> Callable[[], list[tuple[int, str]]]:
+    """Return a helper listing the duration lines logged so far.
+
+    :returns: a callable giving ``(level, message)`` for every record that
+        reports how long a run took.
+    """
+    caplog.set_level(logging.INFO, logger="zodb_backup.operations")
+
+    def _lines() -> list[tuple[int, str]]:
+        return [
+            (record.levelno, record.getMessage())
+            for record in caplog.records
+            if record.name == "zodb_backup.operations"
+            and (
+                " finished in " in record.getMessage()
+                or " failed after " in record.getMessage()
+            )
+        ]
+
+    return _lines
+
+
+def _slow(
+    monkeypatch: pytest.MonkeyPatch,
+    module: object,
+    name: str,
+    clock: FakeClock,
+    seconds: float,
+    error: Exception | None = None,
+) -> None:
+    """Make ``module.name`` take ``seconds`` on the fake clock, then run or fail.
+
+    :param monkeypatch: pytest's monkeypatch fixture.
+    :param module: the module whose function is replaced.
+    :param name: the function's name.
+    :param clock: the fake clock to advance.
+    :param seconds: how long the call appears to take.
+    :param error: raised after the delay instead of calling the real function.
+    """
+    real = getattr(module, name)
+
+    def wrapper(**kwargs: object) -> object:
+        clock.advance(seconds)
+        if error is not None:
+            raise error
+        return real(**kwargs)
+
+    monkeypatch.setattr(module, name, wrapper)
+
+
+class TestFormatDuration:
+    @pytest.mark.parametrize(
+        ("seconds", "expected"),
+        [
+            (0, "0.0s"),
+            (12.34, "12.3s"),
+            (59.94, "59.9s"),
+            (59.96, "1m00s"),
+            (61, "1m01s"),
+            (3599.4, "59m59s"),
+            (3599.6, "1h00m00s"),
+            (3723, "1h02m03s"),
+            (90061, "25h01m01s"),
+        ],
+    )
+    def test_renders(self, seconds: float, expected: str) -> None:
+        assert operations.format_duration(seconds) == expected
+
+
+class TestRunDuration:
+    """Every run logs its duration, in total and per phase (issue #3)."""
+
+    def test_a_backup_logs_the_total_and_each_phase(
+        self,
+        settings: Settings,
+        commit: Commit,
+        clock: FakeClock,
+        durations: Callable[[], list[tuple[int, str]]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        commit(settings.datafs, "a", "first")
+        _slow(monkeypatch, operations.repozo, "backup", clock, 60)
+        _slow(monkeypatch, operations.blob_module, "backup", clock, 600)
+
+        operations.backup(settings)
+
+        assert durations() == [
+            (
+                logging.INFO,
+                "backup finished in 11m00s "
+                "(filestorage 1m00s, blobs 10m00s, retention 0.0s)",
+            )
+        ]
+
+    def test_a_snapshot_is_labelled_as_such(
+        self,
+        settings: Settings,
+        commit: Commit,
+        clock: FakeClock,
+        durations: Callable[[], list[tuple[int, str]]],
+    ) -> None:
+        commit(settings.datafs, "a", "first")
+
+        operations.snapshot(settings)
+
+        ((_, message),) = durations()
+        assert message.startswith("snapshot finished in ")
+
+    def test_a_failed_run_reports_how_long_it_took_to_give_up(
+        self,
+        settings: Settings,
+        commit: Commit,
+        clock: FakeClock,
+        durations: Callable[[], list[tuple[int, str]]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        commit(settings.datafs, "a", "first")
+        _slow(monkeypatch, operations.repozo, "backup", clock, 60)
+        _slow(
+            monkeypatch,
+            operations.blob_module,
+            "backup",
+            clock,
+            30,
+            error=BackupError("rsync died"),
+        )
+
+        with pytest.raises(BackupError, match="rsync died"):
+            operations.backup(settings)
+
+        assert durations() == [
+            (
+                logging.ERROR,
+                "backup failed after 1m30s in blobs (filestorage 1m00s, blobs 30.0s)",
+            )
+        ]
+
+    def test_a_filestorage_failure_is_attributed_to_the_filestorage(
+        self,
+        settings: Settings,
+        durations: Callable[[], list[tuple[int, str]]],
+    ) -> None:
+        """Real clock, real repozo: datafs was never created, so repozo fails."""
+        with pytest.raises(BackupError):
+            operations.backup(settings)
+
+        ((level, message),) = durations()
+        assert level == logging.ERROR
+        assert message.startswith("backup failed after ")
+        assert " in filestorage (filestorage " in message
+        assert "blobs" not in message
+
+    def test_hooks_are_timed_when_configured(
+        self,
+        settings: Settings,
+        commit: Commit,
+        clock: FakeClock,
+        durations: Callable[[], list[tuple[int, str]]],
+    ) -> None:
+        from dataclasses import replace
+
+        settings = replace(settings, pre_command="true", post_command="true")
+        commit(settings.datafs, "a", "first")
+
+        operations.backup(settings)
+
+        ((_, message),) = durations()
+        assert message.endswith(
+            "(pre-command 0.0s, filestorage 0.0s, blobs 0.0s, "
+            "retention 0.0s, post-command 0.0s)"
+        )
+
+    def test_a_failing_post_command_is_reported_as_the_failed_phase(
+        self,
+        settings: Settings,
+        commit: Commit,
+        clock: FakeClock,
+        durations: Callable[[], list[tuple[int, str]]],
+    ) -> None:
+        from dataclasses import replace
+
+        settings = replace(settings, post_command="exit 4")
+        commit(settings.datafs, "a", "first")
+
+        with pytest.raises(CommandError):
+            operations.backup(settings)
+
+        ((level, message),) = durations()
+        assert level == logging.ERROR
+        assert " in post-command (" in message
+
+    def test_only_blobs_has_no_filestorage_phase(
+        self,
+        settings: Settings,
+        clock: FakeClock,
+        durations: Callable[[], list[tuple[int, str]]],
+    ) -> None:
+        from dataclasses import replace
+
+        settings = replace(settings, only_blobs=True)
+
+        operations.backup(settings)
+
+        ((_, message),) = durations()
+        assert message == "backup finished in 0.0s (blobs 0.0s, retention 0.0s)"
+
+    def test_a_restore_logs_the_total_and_each_phase(
+        self,
+        settings: Settings,
+        commit: Commit,
+        clock: FakeClock,
+        durations: Callable[[], list[tuple[int, str]]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        commit(settings.datafs, "a", "first")
+        operations.backup(settings)
+        _slow(monkeypatch, operations.repozo, "recover", clock, 5)
+        _slow(monkeypatch, operations.blob_module, "restore", clock, 125)
+
+        operations.restore(settings)
+
+        assert durations()[-1] == (
+            logging.INFO,
+            "restore finished in 2m10s (filestorage 5.0s, blobs 2m05s)",
+        )
+
+    def test_a_declined_restore_is_not_timed(
+        self,
+        settings: Settings,
+        commit: Commit,
+        durations: Callable[[], list[tuple[int, str]]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Nothing ran, so there is no run to report on."""
+        from dataclasses import replace
+
+        commit(settings.datafs, "a", "first")
+        operations.backup(settings)
+        settings = replace(settings, assume_yes=False)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+        with pytest.raises(RestoreError):
+            operations.restore(settings)
+
+        assert [message for _, message in durations() if "restore" in message] == []
