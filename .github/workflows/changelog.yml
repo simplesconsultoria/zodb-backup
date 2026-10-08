@@ -13,6 +13,11 @@ jobs:
 
   changelog:
     name: Check for a news fragment
+    # Dependabot never writes towncrier fragments, and dependency bumps are not
+    # changelog-worthy for someone operating this tool. Keyed on the pull
+    # request's author rather than github.actor, so the check stays skipped when
+    # a maintainer pushes to, or re-runs, a Dependabot pull request.
+    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     needs:
       - config
@@ -49,9 +54,20 @@ jobs:
       - changelog
     steps:
         - name: Write report
+          env:
+            CONFIG_RESULT: ${{ needs.config.result }}
+            CHANGELOG_RESULT: ${{ needs.changelog.result }}
+            PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           run: |
-            echo '# Workflow Report' >> $GITHUB_STEP_SUMMARY
-            echo '| Job ID | Conclusion |' >> $GITHUB_STEP_SUMMARY
-            echo '| --- | --- |' >> $GITHUB_STEP_SUMMARY
-            echo '| config | ${{ needs.config.result }} |' >> $GITHUB_STEP_SUMMARY
-            echo '| changelog | ${{ needs.changelog.result }} |' >> $GITHUB_STEP_SUMMARY
+            # A bare "skipped" reads as though something went wrong; say why.
+            changelog="$CHANGELOG_RESULT"
+            if [ "$changelog" = "skipped" ] && [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+              changelog="skipped (dependabot)"
+            fi
+            {
+              echo '# Workflow Report'
+              echo '| Job ID | Conclusion |'
+              echo '| --- | --- |'
+              echo "| config | $CONFIG_RESULT |"
+              echo "| changelog | $changelog |"
+            } >> "$GITHUB_STEP_SUMMARY"

@@ -97,7 +97,10 @@ backup process. @yourhandle
 
 Preview the result with `make changelog`.
 
-CI checks for a fragment, so a missing one will fail the pull request.
+CI checks for a fragment, so a missing one will fail the pull request. The one
+exception is pull requests opened by Dependabot: dependency bumps are not
+changelog-worthy for someone operating the tool, so the check is skipped for
+them and the workflow summary reports it as `skipped (dependabot)`.
 
 ## Pull requests
 

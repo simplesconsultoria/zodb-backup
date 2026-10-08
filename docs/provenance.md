@@ -47,6 +47,7 @@ Read at commit of the shallow clone taken 2026-07-31.
 | Multiple filestorages | v1 supports one `Data.fs` and one blobstorage | Deferred (D5) |
 | `alternative_restore_source` | Documented as "mount a different backup volume" | Volume mounts already express this |
 | Windows support | Dropped | Target is Linux containers |
+| Reports no run duration — its only `time.time()` call (`copyblobs.py`) ages blob backups for retention | Logs each run's total duration and every phase's (`filestorage`, `blobs`, `retention`, hooks), on failure as well as success, timed with a monotonic clock | A one-shot container's orchestrator discards the record quickly; the log is the one artefact the operator controls |
 
 ## An upstream repozo bug we work around
 
