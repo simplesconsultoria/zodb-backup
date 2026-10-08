@@ -1,1 +1,0 @@
-Stopped the changelog check from failing every Dependabot pull request. Pull requests opened by Dependabot now skip the news-fragment check, which still applies to everyone else, and the workflow summary reports the skip as `skipped (dependabot)` instead of a bare `skipped`. @ericof

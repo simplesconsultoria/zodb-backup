@@ -1,1 +1,0 @@
-Every `backup`, `snapshot`, `restore` and `snapshot-restore` now ends with one log line giving its duration, in total and for each phase that ran (`filestorage`, `blobs`, `retention`, and the hooks when configured). A failed run logs how long it took to give up and the phase it failed in. @ericof

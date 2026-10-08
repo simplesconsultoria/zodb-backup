@@ -2,6 +2,17 @@
 
 <!-- towncrier release notes start -->
 
+## 1.0.0a2 (2026-10-08)
+
+### New features
+
+- Every `backup`, `snapshot`, `restore` and `snapshot-restore` now ends with one log line giving its duration, in total and for each phase that ran (`filestorage`, `blobs`, `retention`, and the hooks when configured). A failed run logs how long it took to give up and the phase it failed in. @ericof ([#3](https://github.com/simplesconsultoria/zodb-backup/issues/3))
+
+### Internal
+
+- Stopped the changelog check from failing every Dependabot pull request. Pull requests opened by Dependabot now skip the news-fragment check, which still applies to everyone else, and the workflow summary reports the skip as `skipped (dependabot)` instead of a bare `skipped`. @ericof ([#2](https://github.com/simplesconsultoria/zodb-backup/issues/2))
+
+
 ## 1.0.0a1 (2026-08-01)
 
 ### New features
