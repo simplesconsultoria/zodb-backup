@@ -1078,7 +1078,7 @@ wheels = [
 
 [[package]]
 name = "zodb"
-version = "6.3"
+version = "6.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "btrees" },
@@ -1089,9 +1089,9 @@ dependencies = [
     { name = "zodbpickle" },
     { name = "zope-interface" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/70/fb/bfb7dcd19af0b9a51d290f9313e2b2572a272125728c8369e4741eecbe1f/zodb-6.3.tar.gz", hash = "sha256:2da749cf21c709058b2957bb1bc3d3a5d6e86b456246cb48acb5197173367c9f", size = 532918, upload-time = "2026-04-14T06:15:36.977Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/68/2c/cf2661cf12fb8a8fc326d0d9f4663c109c9f1184afd9a68f637e762205bf/zodb-6.4.tar.gz", hash = "sha256:bdc5de730bdc624d1eee0d53d66ad80d58f393080cab5c96e5d7ffeee5dba341", size = 532048, upload-time = "2026-10-12T07:25:12.789Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/82/09571aeb3eeb0033ecde410de174250ef56ff47960cc5eed7b2dbb3694a0/zodb-6.3-py3-none-any.whl", hash = "sha256:4f1baad4296fa06d4f0a468c91be05e5bd3f0fbfa0b37794de4f03c97cb8dcf1", size = 419734, upload-time = "2026-04-14T06:15:35.253Z" },
+    { url = "https://files.pythonhosted.org/packages/25/90/a5349b6bdbaa02548ef730f2a91620bc5a663cce5567db90a7811c78f377/zodb-6.4-py3-none-any.whl", hash = "sha256:130020c9048e8a28f025a7b88787bbdbd2eabda7ced5de8dd8d0b28886ed61f7", size = 420336, upload-time = "2026-10-12T07:25:11.023Z" },
 ]
 
 [[package]]
